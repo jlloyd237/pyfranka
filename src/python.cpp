@@ -60,11 +60,14 @@ PYBIND11_MODULE(_pyfranka, m) {
 		.def_property("rel_jerk", &Robot::getRelJerk, &Robot::setRelJerk)
 
 		.def_property_readonly("current_pose", &Robot::getCurrentPose)
-		.def_property_readonly("target_pose", &Robot::getTargetPose)
-		.def_property_readonly("current_joints", &Robot::getCurrentJoints)
-		.def_property_readonly("target_joints", &Robot::getTargetJoints)
+		.def_property_readonly("desired_pose", &Robot::getDesiredPose)
+		.def_property_readonly("commanded_pose", &Robot::getCommandedPose)
 		.def_property_readonly("current_elbow", &Robot::getCurrentElbow)
-		.def_property_readonly("target_elbow", &Robot::getTargetElbow)
+		.def_property_readonly("desired_elbow", &Robot::getDesiredElbow)
+		.def_property_readonly("commanded_elbow", &Robot::getCommandedElbow)
+		.def_property_readonly("current_joints", &Robot::getCurrentJoints)
+		.def_property_readonly("desired_joints", &Robot::getDesiredJoints)
+		.def_property_readonly("commanded_joints", &Robot::getCommandedJoints)
 
 		.def_property("ee_frame", &Robot::getEndEffectorFrame, &Robot::setEndEffectorFrame)
 		.def_property("stiffness_frame", &Robot::getStiffnessFrame, &Robot::setStiffnessFrame)

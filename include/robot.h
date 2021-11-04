@@ -80,11 +80,14 @@ namespace franka_control {
 	    void moveLinear(const std::tuple<Vector3d, Vector4d>& targetPose, const Vector2d& elbow);
 	    void moveJoints(const Vector7d& targetJoints);
 	    std::tuple<Vector3d, Vector4d> getCurrentPose();
-	    std::tuple<Vector3d, Vector4d> getTargetPose();
+	    std::tuple<Vector3d, Vector4d> getDesiredPose();
+	    std::tuple<Vector3d, Vector4d> getCommandedPose();
 	    Vector7d getCurrentJoints();
-	    Vector7d getTargetJoints();
+	    Vector7d getDesiredJoints();
+	    Vector7d getCommandedJoints();
 	    Vector2d getCurrentElbow();
-	    Vector2d getTargetElbow();
+	    Vector2d getDesiredElbow();
+	    Vector2d getCommandedElbow();
 	    std::tuple<Vector3d, Vector4d> getEndEffectorFrame();
 	    std::tuple<Vector3d, Vector4d> getStiffnessFrame();
 	    void setCollisionBehavior(

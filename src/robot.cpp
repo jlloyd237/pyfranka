@@ -56,8 +56,8 @@ namespace franka_control {
     	Vector3d targetTrans = std::get<0>(targetPoseQuat);
     	Quaterniond targetRot = std::get<1>(targetPoseQuat);
 
-    	// Use previous target pose as initial pose
-    	std::tuple<Vector3d, Quaterniond> initPose = qcoeff2quat(getTargetPose());
+    	// Use previous desired pose as initial pose
+    	std::tuple<Vector3d, Quaterniond> initPose = qcoeff2quat(getDesiredPose());
 
     	Vector3d initTrans = std::get<0>(initPose);
     	Quaterniond initRot = std::get<1>(initPose);
@@ -66,9 +66,9 @@ namespace franka_control {
 		double transDist = (targetTrans - initTrans).norm();
 
 		// Compute rotation distance between poses
-		if (initRot.coeffs().dot(targetRot.coeffs()) < 0.0) {
-			targetRot.coeffs() << -targetRot.coeffs();
-		}
+//		if (initRot.coeffs().dot(targetRot.coeffs()) < 0.0) {
+//			targetRot.coeffs() << -targetRot.coeffs();
+//		}
 		double rotDist = targetRot.angularDistance(initRot);
 
 		// Use translation or rotation trajectory with the longest duration
@@ -138,8 +138,8 @@ namespace franka_control {
     }
 
     void Robot::doMoveJoints_(const Vector7d& targetJoints) {
-    	// Use previous target joints as initial joints
-    	Vector7d initJoints = getTargetJoints();
+    	// Use previous desired joints as initial joints
+    	Vector7d initJoints = getDesiredJoints();
 
     	// Compute the maximum distance between initial and target joint angles
     	double maxJointDist = (targetJoints - initJoints).cwiseAbs().maxCoeff();
@@ -190,9 +190,14 @@ namespace franka_control {
         return quat2qcoeff(mat2quat(arr2mat(state.O_T_EE)));
     }
 
-    Vector7d Robot::getCurrentJoints() {
+    std::tuple<Vector3d, Vector4d> Robot::getDesiredPose() {
         auto state = robot_.readOnce();
-        return Vector7d(state.q.data());
+        return quat2qcoeff(mat2quat(arr2mat(state.O_T_EE_d)));
+    }
+
+    std::tuple<Vector3d, Vector4d> Robot::getCommandedPose() {
+        auto state = robot_.readOnce();
+        return quat2qcoeff(mat2quat(arr2mat(state.O_T_EE_c)));
     }
 
     Vector2d Robot::getCurrentElbow() {
@@ -200,19 +205,28 @@ namespace franka_control {
         return Vector2d(state.elbow.data());
     }
 
-    std::tuple<Vector3d, Vector4d> Robot::getTargetPose() {
+    Vector2d Robot::getDesiredElbow() {
         auto state = robot_.readOnce();
-        return quat2qcoeff(mat2quat(arr2mat(state.O_T_EE_d)));
+        return Vector2d(state.elbow_d.data());
     }
 
-    Vector7d Robot::getTargetJoints() {
+    Vector2d Robot::getCommandedElbow() {
+        auto state = robot_.readOnce();
+        return Vector2d(state.elbow_c.data());
+    }
+
+    Vector7d Robot::getCurrentJoints() {
+        auto state = robot_.readOnce();
+        return Vector7d(state.q.data());
+    }
+
+    Vector7d Robot::getDesiredJoints() {
         auto state = robot_.readOnce();
         return Vector7d(state.q_d.data());
     }
 
-    Vector2d Robot::getTargetElbow() {
-        auto state = robot_.readOnce();
-        return Vector2d(state.elbow_d.data());
+    Vector7d Robot::getCommandedJoints() {
+        return getDesiredJoints();		// Same as desired joint angles
     }
 
     void Robot::setEndEffectorFrame(const std::tuple<Vector3d, Vector4d>& eeFrame) {
