@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
 			* AngleAxisd(deltaRotE(2), Vector3d::UnitZ());
 
     	// Use current/previous target pose as initial pose
-		std::tuple<Vector3d, Quaterniond> initPose = qcoeff2quat(robot.getTargetPose());
+		std::tuple<Vector3d, Quaterniond> initPose = qcoeff2quat(robot.getDesiredPose());
 		Vector3d initTrans = std::get<0>(initPose);
 		Quaterniond initRotQ = std::get<1>(initPose);
 

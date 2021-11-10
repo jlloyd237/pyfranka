@@ -65,10 +65,11 @@ namespace franka_control {
 	}
 
 	double LSSABTrajectory::operator()(double t) {
+		double q;
+
 		// Restrict t to trajectory time limits
 		t = min(max(t, 0.0), tf_);
 
-		double q;
 		if (t <= tb_) {
 			// Initial blend ...
 			q = (((amaxSigned_ * tb_) / (4 * M_PI)) * (M_PI * pow(t, 2) / tb_ + tb_ * cos(2 * M_PI * t / tb_) / (2 * M_PI) - tb_ / (2 * M_PI)));
@@ -91,4 +92,4 @@ namespace franka_control {
 		return q;
 	}
 
-}	// namespace pyfranka
+}	// namespace franka_control

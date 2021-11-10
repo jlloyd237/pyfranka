@@ -343,7 +343,7 @@ namespace franka_control {
 		return robot_.serverVersion();
 	}
 
-}	// namespace pyfranka
+}	// namespace franka_control
 
 
 
