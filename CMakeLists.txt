@@ -22,6 +22,7 @@ add_library(frankactrl STATIC
 	src/utils.cpp
 	src/robot.cpp
 	src/lssab_trajectory.cpp
+	src/ssab_trajectory.cpp
 )
 target_include_directories(frankactrl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(frankactrl PUBLIC Franka::Franka Eigen3::Eigen)
@@ -51,6 +52,7 @@ endif()
 set(EXAMPLES
 	franka_move_to_relative_pose
 	franka_move_to_relative_joints
+	franka_move_velocity
 )
 
 foreach(example ${EXAMPLES})

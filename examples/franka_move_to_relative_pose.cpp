@@ -8,9 +8,9 @@
 #include <franka/model.h>
 #include <franka/robot.h>
 
+#include "robot.h"
 #include "utils.h"
 #include "lssab_trajectory.h"
-#include "robot.h"
 
 using namespace franka_control;
 using namespace Eigen;
@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
 		Vector3d finalTrans = initTrans + deltaTrans;
 		Quaterniond finalRotQ = deltaRotQ * initRotQ;
 
-		robot.moveLinear(quat2qcoeff(std::make_pair(finalTrans, finalRotQ)));
+		robot.moveLinearPosition(quat2qcoeff(std::make_pair(finalTrans, finalRotQ)));
 
 	} catch (const franka::Exception& e) {
 		std::cerr << e.what() << std::endl;

@@ -34,17 +34,17 @@ PYBIND11_MODULE(_pyfranka, m) {
 					"rel_accel"_a = 0.1,
 					"rel_jerk"_a = 0.1)
 
-		.def_property_readonly_static("trans_velocity_limit", [](py::object) { return Robot::transVelocityLimit; })
-		.def_property_readonly_static("trans_accel_limit", [](py::object) { return Robot::transAccelLimit; })
-		.def_property_readonly_static("trans_jerk_limit", [](py::object) { return Robot::transJerkLimit; })
-		.def_property_readonly_static("rot_velocity_limit", [](py::object) { return Robot::rotVelocityLimit; })
-		.def_property_readonly_static("rot_accel_limit", [](py::object) { return Robot::rotAccelLimit; })
-		.def_property_readonly_static("rot_jerk_limit", [](py::object) { return Robot::rotJerkLimit; })
-		.def_property_readonly_static("joint_velocity_limits", [](py::object) { return Robot::jointVelocityLimits; })
-		.def_property_readonly_static("joint_accel_limits", [](py::object) { return Robot::jointAccelLimits; })
-		.def_property_readonly_static("joint_jerk_limits", [](py::object) { return Robot::jointJerkLimits; })
-		.def_property_readonly_static("degrees_of_freedom", [](py::object) { return Robot::degreesOfFreedom; })
-		.def_property_readonly_static("control_rate", [](py::object) { return Robot::controlRate; })
+//		.def_property_readonly_static("trans_velocity_limit", [](py::object) { return Robot::transVelocityLimit; })
+//		.def_property_readonly_static("trans_accel_limit", [](py::object) { return Robot::transAccelLimit; })
+//		.def_property_readonly_static("trans_jerk_limit", [](py::object) { return Robot::transJerkLimit; })
+//		.def_property_readonly_static("rot_velocity_limit", [](py::object) { return Robot::rotVelocityLimit; })
+//		.def_property_readonly_static("rot_accel_limit", [](py::object) { return Robot::rotAccelLimit; })
+//		.def_property_readonly_static("rot_jerk_limit", [](py::object) { return Robot::rotJerkLimit; })
+//		.def_property_readonly_static("joint_velocity_limits", [](py::object) { return Robot::jointVelocityLimits; })
+//		.def_property_readonly_static("joint_accel_limits", [](py::object) { return Robot::jointAccelLimits; })
+//		.def_property_readonly_static("joint_jerk_limits", [](py::object) { return Robot::jointJerkLimits; })
+//		.def_property_readonly_static("degrees_of_freedom", [](py::object) { return Robot::degreesOfFreedom; })
+//		.def_property_readonly_static("control_rate", [](py::object) { return Robot::controlRate; })
 
 		.def_property("max_trans_velocity", &Robot::getMaxTransVelocity, &Robot::setMaxTransVelocity)
 		.def_property("max_trans_accel", &Robot::getMaxTransAccel, &Robot::setMaxTransAccel)
@@ -59,24 +59,45 @@ PYBIND11_MODULE(_pyfranka, m) {
 		.def_property("rel_accel", &Robot::getRelAccel, &Robot::setRelAccel)
 		.def_property("rel_jerk", &Robot::getRelJerk, &Robot::setRelJerk)
 
+		.def_property_readonly("current_joints", &Robot::getCurrentJointPositions)
+		.def_property_readonly("desired_joints", &Robot::getDesiredJointPositions)
+		.def_property_readonly("commanded_joints", &Robot::getCommandedJointPositions)
 		.def_property_readonly("current_pose", &Robot::getCurrentPose)
 		.def_property_readonly("desired_pose", &Robot::getDesiredPose)
 		.def_property_readonly("commanded_pose", &Robot::getCommandedPose)
 		.def_property_readonly("current_elbow", &Robot::getCurrentElbow)
 		.def_property_readonly("desired_elbow", &Robot::getDesiredElbow)
 		.def_property_readonly("commanded_elbow", &Robot::getCommandedElbow)
-		.def_property_readonly("current_joints", &Robot::getCurrentJoints)
-		.def_property_readonly("desired_joints", &Robot::getDesiredJoints)
-		.def_property_readonly("commanded_joints", &Robot::getCommandedJoints)
+
+		.def_property_readonly("current_joints_velocity", &Robot::getCurrentJointVelocity)
+		.def_property_readonly("desired_joints_velocity", &Robot::getDesiredJointVelocity)
+		.def_property_readonly("commanded_joints_velocity", &Robot::getCommandedJointVelocity)
+		.def_property_readonly("desired_linear_velocity", &Robot::getDesiredLinearVelocity)
+		.def_property_readonly("commanded_linear_velocity", &Robot::getCommandedLinearVelocity)
 
 		.def_property("ee_frame", &Robot::getEndEffectorFrame, &Robot::setEndEffectorFrame)
 		.def_property("stiffness_frame", &Robot::getStiffnessFrame, &Robot::setStiffnessFrame)
 
-        .def("move_linear", (void (Robot::*)(const std::tuple<Vector3d, Vector4d>&)) &Robot::moveLinear,
-        		py::call_guard<py::gil_scoped_release>())
-        .def("move_linear", (void (Robot::*)(const std::tuple<Vector3d, Vector4d>&, const Vector2d&)) &Robot::moveLinear,
-        		py::call_guard<py::gil_scoped_release>())
-		.def("move_joints", &Robot::moveJoints, "target_joints"_a, py::call_guard<py::gil_scoped_release>())
+		.def("move_joints", &Robot::moveJointPosition, py::call_guard<py::gil_scoped_release>(), "target_joint_pos"_a)
+        .def("move_linear", (void (Robot::*)(const std::tuple<Vector3d, Vector4d>&)) &Robot::moveLinearPosition,
+        		py::call_guard<py::gil_scoped_release>(),"target_pose"_a)
+        .def("move_linear", (void (Robot::*)(const std::tuple<Vector3d, Vector4d>&, const Vector2d&)) &Robot::moveLinearPosition,
+        		py::call_guard<py::gil_scoped_release>(), "target_pose"_a, "elbow"_a)
+
+		.def("move_joints_velocity", &Robot::moveJointVelocity, py::call_guard<py::gil_scoped_release>(),
+				"target_joint_vel"_a)
+		.def("move_linear_velocity", (void (Robot::*)(const Vector6d&)) &Robot::moveLinearVelocity,
+				py::call_guard<py::gil_scoped_release>(), "target_linear_vel"_a)
+
+//		.def("move_linear_velocity", [](Robot& robot, const Vector6d& targetLinearVel) {
+//    			std::cerr << "move_linear_velocity:\n" << targetLinearVel << std::endl;
+//				py::gil_scoped_release release;
+//				robot.moveLinearVelocity(targetLinearVel);
+//				py::gil_scoped_acquire acquire;
+//			})
+
+		.def("move_linear_velocity", (void (Robot::*)(const Vector6d&, const Vector2d&)) &Robot::moveLinearVelocity,
+				py::call_guard<py::gil_scoped_release>(), "target_linear_vel"_a, "elbow"_a)
 
 		.def("set_collision_behavior", &Robot::setCollisionBehavior,
 				"lower_torque_thresholds_accel"_a,

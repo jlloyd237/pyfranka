@@ -9,6 +9,7 @@ namespace franka_control {
 	class LSSABTrajectory : public Trajectory {
 
 	public:
+		LSSABTrajectory();
 		LSSABTrajectory(double q0, double q1, double vmax, double amax, double jmax, bool norm = false);
 
 		virtual double operator()(double t);

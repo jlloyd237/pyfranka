@@ -53,5 +53,4 @@ namespace franka_control {
 		return std::make_tuple(trans, Quaterniond(rot));
 //		return std::make_tuple(std::get<0>(pose), Quaterniond(std::get<1>(pose)));
 	}
-
 }	// namespace franka_control

@@ -6,9 +6,9 @@
 #include <franka/model.h>
 #include <franka/robot.h>
 
+#include "robot.h"
 #include "utils.h"
 #include "lssab_trajectory.h"
-#include "robot.h"
 
 using namespace franka_control;
 
@@ -34,12 +34,12 @@ int main(int argc, char** argv) {
 		deltaJoints *= M_PI / 180;
 
     	// Use current/previous target joints as initial joints
-		Vector7d initJoints = robot.getDesiredJoints();
+		Vector7d initJoints = robot.getDesiredJointPositions();
 
 		// Compute target joints
 		Vector7d finalJoints = initJoints + deltaJoints;
 
-		robot.moveJoints(finalJoints);
+		robot.moveJointPosition(finalJoints);
 
 	} catch (const franka::Exception& e) {
 		std::cerr << e.what() << std::endl;

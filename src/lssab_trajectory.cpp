@@ -12,6 +12,20 @@ namespace franka_control {
 
 	using namespace std;
 
+	LSSABTrajectory::LSSABTrajectory()
+		: q0_(0.0)
+		, q1_(0.0)
+		, vmax_(0.0)
+		, amax_(0.0)
+		, jmax_(0.0)
+		, norm_(false)
+		, tb_(0.0)
+		, tl_(0.0)
+		, tf_(0.0)
+		, amaxSigned_(0.0)
+	{
+	}
+
 	LSSABTrajectory::LSSABTrajectory(double q0, double q1, double vmax, double amax, double jmax, bool norm)
 		: q0_(q0)
 		, q1_(q1)
