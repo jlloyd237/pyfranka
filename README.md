@@ -1,7 +1,7 @@
 # Pyfranka
 >A Python/C++ library for controlling the Franka Panda robot.
 
-At present, only joint and Cartesian position control have been implemented in the API, but the plan is to extend this to include velocity control in the near future.
+The library supports basic joint/Cartesian position control and velocity control.
 
 Pyfranka depends on [libfranka](https://github.com/frankaemika/libfranka) to interface with the robot, [Eigen](https://eigen.tuxfamily.org) for linear algebra operations and transformations, and [pybind11](https://github.com/pybind/pybind11) for the Python bindings.
 
