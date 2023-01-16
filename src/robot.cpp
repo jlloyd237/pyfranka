@@ -250,6 +250,7 @@ namespace franka_control {
 	bool Robot::hasErrors() {
 //    	checkVelocityControlNotRunning_();
 		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
+		return bool(state.current_errors);
 	}
 
 	bool Robot::recoverFromErrors() {
