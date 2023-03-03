@@ -5,6 +5,7 @@
 #include <string>
 #include <thread>
 #include <mutex>
+#include <atomic>
 
 #include <Eigen/Dense>
 #include <franka/robot.h>
@@ -43,20 +44,21 @@ namespace franka_control {
 
 		explicit Robot(
 				const std::string& ip,
-				double maxTransVelocity = 1.0,
-				double maxTransAccel = 5.0,
-				double maxTransJerk = 20.0,
-				double maxRotVelocity = 3.0,
-				double maxRotAccel = 15.0,
-				double maxRotJerk = 75.0,
-				double maxJointVelocity = 3.0,
-				double maxJointAccel = 15.0,
-				double maxJointJerk = 75.0,
+				double maxTransVelocity = 1.0,		// m/s
+				double maxTransAccel = 5.0,			// m/s^2
+				double maxTransJerk = 20.0,			// m/s^3
+				double maxRotVelocity = 3.0,		// rad/s
+				double maxRotAccel = 15.0,			// rad/s^2
+				double maxRotJerk = 75.0,			// rad/s^3
+				double maxJointVelocity = 3.0,		// rad/s
+				double maxJointAccel = 15.0,		// rad/s^2
+				double maxJointJerk = 75.0,			// rad/s^3
 				double relVelocity = 0.1,
 				double relAccel = 0.1,
 				double relJerk = 0.1
 				);
 
+		// Joint/Cartesian limits
 		double getMaxTransVelocity() { return maxTransVelocity_; }
 		void setMaxTransVelocity(double val) { maxTransVelocity_ = val; }
 		double getMaxTransAccel() { return maxTransAccel_; }
@@ -82,37 +84,43 @@ namespace franka_control {
 		double getRelJerk() { return relJerk_; }
 		void setRelJerk(double val) { relJerk_ = val; }
 
+		// Joint/Cartesian position control (synchronous/blocking)
 	    void moveJointPosition(const Vector7d& targetJointPos);
-
 	    void moveLinearPosition(const std::tuple<Vector3d, Vector4d>& targetPose);
 	    void moveLinearPosition(const std::tuple<Vector3d, Vector4d>& targetPose, const Vector2d& elbow);
 
+	    // Joint/Cartesian velocity control (asynchronous/non-blocking)
 	    void moveJointVelocity(const Vector7d& targetJointVel);
-
 	    void moveLinearVelocity(const Vector6d& targetLinearVel);
 	    void moveLinearVelocity(const Vector6d& targetLinearVel, const Vector2d& elbow);
 
+	    // Joint/Cartesian position state
+	    Vector7d getCurrentJointPosition();
+	    Vector7d getDesiredJointPosition();
+	    Vector7d getCommandedJointPosition();
 	    std::tuple<Vector3d, Vector4d> getCurrentPose();
 	    std::tuple<Vector3d, Vector4d> getDesiredPose();
 	    std::tuple<Vector3d, Vector4d> getCommandedPose();
 
-	    Vector6d getDesiredLinearVelocity();
-	    Vector6d getCommandedLinearVelocity();
-
+	    // Joint/Cartesian velocity state
 	    Vector7d getCurrentJointVelocity();
 	    Vector7d getDesiredJointVelocity();
 	    Vector7d getCommandedJointVelocity();
+	    Vector6d getDesiredLinearVelocity();
+	    Vector6d getCommandedLinearVelocity();
 
-	    Vector7d getCurrentJointPositions();
-	    Vector7d getDesiredJointPositions();
-	    Vector7d getCommandedJointPositions();
-
+	    // Elbow state
 	    Vector2d getCurrentElbow();
 	    Vector2d getDesiredElbow();
 	    Vector2d getCommandedElbow();
 
+	    // End-effector and stiffness coordinate frames
 	    std::tuple<Vector3d, Vector4d> getEndEffectorFrame();
+	    void setEndEffectorFrame(const std::tuple<Vector3d, Vector4d>& eeFrame);
 	    std::tuple<Vector3d, Vector4d> getStiffnessFrame();
+	    void setStiffnessFrame(const std::tuple<Vector3d, Vector4d>& kFrame);
+
+	    // Collision behavior
 	    void setCollisionBehavior(
 	    		const Vector7d& lowerTorqueThresholdsAccel,
 	    		const Vector7d& upperTorqueThresholdsAccel,
@@ -122,52 +130,43 @@ namespace franka_control {
 	    		const Vector6d& upperForceThresholdsAccel,
 				const Vector6d& lowerForceThresholdsNominal,
 				const Vector6d& upperForceThresholdsNominal);
+
+	    // Joint/Cartesian impedance
 		void setJointImpedance(const Vector7d& kq);
 		void setCartesianImpedance(const Vector6d& kx);
-	    void setEndEffectorFrame(const std::tuple<Vector3d, Vector4d>& eeFrame);
-	    void setStiffnessFrame(const std::tuple<Vector3d, Vector4d>& kFrame);
-	    void setDefaultBehavior();
 
+		// Misc
+	    void setDefaultBehavior();
 	    void stop();
 	    bool hasErrors();
 	    bool recoverFromErrors();
 	    unsigned serverVersion();
 
 	private:
+	    // Implementations for joint/Cartesian position/velocity control
+	    void doMoveJointPosition_(const Vector7d& targetJointPos);
 	    void doMoveLinearPosition_(const std::tuple<Vector3d, Vector4d>& targetPose,
 	    		const Vector2d& elbow = Vector2d(), bool elbowDefined = false);
-	    void doMoveJointPosition_(const Vector7d& targetJointPos);
+	    void doMoveJointVelocity_(const Vector7d& targetJointVel);
 	    void doMoveLinearVelocity_(const Vector6d& targetLinearVel, const Vector2d& elbow = Vector2d(),
 	    		bool elbowDefined = false);
-	    void doMoveJointVelocity_(const Vector7d& targetJointVel);
 
-	    void startVelocityControlThread_(void (Robot::*vcThreadFn)());
-	    void stopVelocityControlThread_();
-
-	    void doLinearVelocityMotion_();
+	    // Velocity control motion generator functions (run in background thread)
 	    void doJointVelocityMotion_();
+	    void doLinearVelocityMotion_();
 
-	    void updateLinearVelocityParams_(
-	    		const Vector6d& initLinearVel,
-				const Vector6d& targetLinearVel,
-				const Vector2d& elbow,
-				bool elbowDefined,
-				const SSABTrajectory& trajectory,
-				double currTime
-		);
-	    void updateJointVelocityParams_(
-	    		const Vector7d& initJointVel,
-				const Vector7d& targetJointVel,
-				const SSABTrajectory& trajectory,
-				double currTime
-		);
+	    // Returns saved robot state if control function is running; otherwise get from robot
+		franka::RobotState getRobotState();
 
-	    void checkVelocityControlNotRunning_();
+		// Background thread management
+	    void startBackgroundThread_(void (Robot::*bgThreadFunc)());
+	    void stopBackgroundThread_();
 
 	private:
 	    franka::Robot robot_;
 	    franka::RobotState robotState_;
 
+		// Joint/Cartesian limits
 		double maxTransVelocity_;
 		double maxTransAccel_;
 		double maxTransJerk_;
@@ -181,14 +180,13 @@ namespace franka_control {
 		double relAccel_;
 		double relJerk_;
 
-		double currTime_;
-
 		// Elbow parameters
 		Vector2d elbow_;
 		bool elbowDefined_;
 
-		// Position control trajectory
-		LSSABTrajectory posTraj_;
+		// Joint position control parameters
+		Vector7d initJointPos_;
+		Vector7d targetJointPos_;
 
 		// Cartesian position control parameters
 		Vector3d initTrans_;
@@ -196,26 +194,27 @@ namespace franka_control {
 		Quaterniond initRot_;
 		Quaterniond targetRot_;
 
-		// Joint position control parameters
-		Vector7d initJointPos_;
-		Vector7d targetJointPos_;
-
-		// Velocity control thread
-		std::thread vcThread_;
-		std::mutex vcMutex_;
-		bool vcThreadRunning_;
-		void (Robot::*vcThreadFn_)();
-
-		// Velocity control trajectory
-		SSABTrajectory velTraj_;
+		// Joint velocity control parameters
+		Vector7d initJointVel_;
+		Vector7d targetJointVel_;
 
 		// Cartesian velocity control parameters
 		Vector6d initLinearVel_;
 		Vector6d targetLinearVel_;
 
-		// Joint velocity control parameters
-		Vector7d initJointVel_;
-		Vector7d targetJointVel_;
+		// Position/velocity control trajectories
+		LSSABTrajectory posTraj_;
+		SSABTrajectory velTraj_;
+		double trajTime_;
+
+		// Background thread for running asynchronous control functions
+		// (e.g., velocity control function)
+		std::thread bgThread_;
+		std::atomic<bool> bgThreadRunning_;
+		void (Robot::*bgThreadFunc_)();
+
+		// Synchronise access to robot state
+		std::mutex robotStateMutex_;
 	};
 
 }	// namespace franka_control

@@ -21,6 +21,7 @@ message("Found Franka Version: ${Franka_VERSION}")
 add_library(frankactrl STATIC
 	src/utils.cpp
 	src/robot.cpp
+	src/gripper.cpp
 	src/lssab_trajectory.cpp
 	src/ssab_trajectory.cpp
 )
@@ -53,6 +54,7 @@ set(EXAMPLES
 	franka_move_to_relative_pose
 	franka_move_to_relative_joints
 	franka_move_velocity
+	franka_move_gripper
 )
 
 foreach(example ${EXAMPLES})

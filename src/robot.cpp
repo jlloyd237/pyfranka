@@ -46,111 +46,85 @@ namespace franka_control {
 	, relVelocity_(relVelocity)
 	, relAccel_(relAccel)
 	, relJerk_(relJerk)
-	, vcThreadRunning_(false)
+	, bgThreadRunning_(false)
+	, bgThreadFunc_(nullptr)
 	{
 		setDefaultBehavior();
+		robotState_ = robot_.readOnce();
 	}
 
     void Robot::moveJointPosition(const Vector7d& targetJointPos) {
-    	checkVelocityControlNotRunning_();
     	doMoveJointPosition_(targetJointPos);
     }
 
     void Robot::moveLinearPosition(const std::tuple<Vector3d, Vector4d>& targetPose) {
-    	checkVelocityControlNotRunning_();
     	doMoveLinearPosition_(targetPose);
     }
 
     void Robot::moveLinearPosition(const std::tuple<Vector3d, Vector4d>& targetPose, const Vector2d& elbow) {
-    	checkVelocityControlNotRunning_();
     	doMoveLinearPosition_(targetPose, elbow, true);
     }
 
 	void Robot::moveJointVelocity(const Vector7d& targetJointVel) {
+		if ((bgThreadFunc_ != nullptr) && (bgThreadFunc_ != &Robot::doJointVelocityMotion_)) {
+			throw std::runtime_error("Error: Joint velocity control not possible while "
+				"another type of robot control function is running");
+		}
 		doMoveJointVelocity_(targetJointVel);
 	}
 
 	void Robot::moveLinearVelocity(const Vector6d& targetLinearVel) {
+		if ((bgThreadFunc_ != nullptr) && (bgThreadFunc_ != &Robot::doLinearVelocityMotion_)) {
+			throw std::runtime_error("Error: Linear velocity control not possible while "
+				"another type of robot control function is running");
+		}
 		doMoveLinearVelocity_(targetLinearVel);
 	}
 
 	void Robot::moveLinearVelocity(const Vector6d& targetLinearVel, const Vector2d& elbow) {
+		if ((bgThreadFunc_ != nullptr) && (bgThreadFunc_ != &Robot::doLinearVelocityMotion_)) {
+			throw std::runtime_error("Error: Linear velocity control not possible while "
+				"another type of robot control function is running");
+		}
 		doMoveLinearVelocity_(targetLinearVel, elbow, true);
 	}
 
+    Vector7d Robot::getCurrentJointPosition() {
+    	auto state = getRobotState();
+        return Vector7d(state.q.data());
+    }
+
+    Vector7d Robot::getDesiredJointPosition() {
+    	auto state = getRobotState();
+        return Vector7d(state.q_d.data());
+    }
+
+    Vector7d Robot::getCommandedJointPosition() {
+        return getDesiredJointPosition();		// Same as desired joint angles
+    }
+
     std::tuple<Vector3d, Vector4d> Robot::getCurrentPose() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
+    	auto state = getRobotState();
         return quat2qcoeff(mat2quat(arr2mat(state.O_T_EE)));
     }
 
     std::tuple<Vector3d, Vector4d> Robot::getDesiredPose() {
-//    	checkVelocityControlNotRunning_();
-    	auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
+    	auto state = getRobotState();
         return quat2qcoeff(mat2quat(arr2mat(state.O_T_EE_d)));
     }
 
     std::tuple<Vector3d, Vector4d> Robot::getCommandedPose() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
+    	auto state = getRobotState();
         return quat2qcoeff(mat2quat(arr2mat(state.O_T_EE_c)));
     }
 
-    Vector2d Robot::getCurrentElbow() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
-        return Vector2d(state.elbow.data());
-    }
-
-    Vector2d Robot::getDesiredElbow() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
-        return Vector2d(state.elbow_d.data());
-    }
-
-    Vector2d Robot::getCommandedElbow() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
-        return Vector2d(state.elbow_c.data());
-    }
-
-    Vector7d Robot::getCurrentJointPositions() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
-        return Vector7d(state.q.data());
-    }
-
-    Vector7d Robot::getDesiredJointPositions() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
-        return Vector7d(state.q_d.data());
-    }
-
-    Vector7d Robot::getCommandedJointPositions() {
-        return getDesiredJointPositions();		// Same as desired joint angles
-    }
-
-    Vector6d Robot::getDesiredLinearVelocity() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
-        return Vector6d(state.O_dP_EE_d.data());
-    }
-
-    Vector6d Robot::getCommandedLinearVelocity() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
-        return Vector6d(state.O_dP_EE_c.data());
-    }
-
     Vector7d Robot::getCurrentJointVelocity() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
+    	auto state = getRobotState();
         return Vector7d(state.dq.data());
     }
 
     Vector7d Robot::getDesiredJointVelocity() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
+    	auto state = getRobotState();
         return Vector7d(state.dq_d.data());
     }
 
@@ -158,26 +132,47 @@ namespace franka_control {
         return getDesiredJointVelocity();
     }
 
-    void Robot::setEndEffectorFrame(const std::tuple<Vector3d, Vector4d>& eeFrame) {
-    	checkVelocityControlNotRunning_();
-    	robot_.setEE(mat2arr(quat2mat(qcoeff2quat(eeFrame))));
+    Vector6d Robot::getDesiredLinearVelocity() {
+    	auto state = getRobotState();
+        return Vector6d(state.O_dP_EE_d.data());
+    }
+
+    Vector6d Robot::getCommandedLinearVelocity() {
+    	auto state = getRobotState();
+        return Vector6d(state.O_dP_EE_c.data());
+    }
+
+    Vector2d Robot::getCurrentElbow() {
+    	auto state = getRobotState();
+        return Vector2d(state.elbow.data());
+    }
+
+    Vector2d Robot::getDesiredElbow() {
+    	auto state = getRobotState();
+        return Vector2d(state.elbow_d.data());
+    }
+
+    Vector2d Robot::getCommandedElbow() {
+    	auto state = getRobotState();
+        return Vector2d(state.elbow_c.data());
     }
 
     std::tuple<Vector3d, Vector4d> Robot::getEndEffectorFrame() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
+    	auto state = getRobotState();
     	return quat2qcoeff(mat2quat(arr2mat(state.NE_T_EE)));
     }
 
-	void Robot::setStiffnessFrame(const std::tuple<Vector3d, Vector4d>& kFrame) {
-    	checkVelocityControlNotRunning_();
-    	robot_.setEE(mat2arr(quat2mat(qcoeff2quat(kFrame))));
+    void Robot::setEndEffectorFrame(const std::tuple<Vector3d, Vector4d>& eeFrame) {
+    	robot_.setEE(mat2arr(quat2mat(qcoeff2quat(eeFrame))));
     }
 
     std::tuple<Vector3d, Vector4d> Robot::getStiffnessFrame() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
+    	auto state = getRobotState();
     	return quat2qcoeff(mat2quat(arr2mat(state.EE_T_K)));
+    }
+
+	void Robot::setStiffnessFrame(const std::tuple<Vector3d, Vector4d>& kFrame) {
+    	robot_.setEE(mat2arr(quat2mat(qcoeff2quat(kFrame))));
     }
 
     void Robot::setCollisionBehavior(
@@ -190,7 +185,6 @@ namespace franka_control {
 			const Vector6d& lowerForceThresholdsNominal,
 			const Vector6d& upperForceThresholdsNominal) {
 
-    	checkVelocityControlNotRunning_();
     	robot_.setCollisionBehavior(
     			vec2arr(lowerTorqueThresholdsAccel),
 				vec2arr(upperTorqueThresholdsAccel),
@@ -202,8 +196,15 @@ namespace franka_control {
 				vec2arr(upperForceThresholdsNominal));
     }
 
+	void Robot::setJointImpedance(const Vector7d& kq) {
+		robot_.setJointImpedance(vec2arr(kq));
+	}
+
+	void Robot::setCartesianImpedance(const Vector6d& kx) {
+		robot_.setCartesianImpedance(vec2arr(kx));
+	}
+
 	void Robot::setDefaultBehavior() {
-    	checkVelocityControlNotRunning_();
 	    robot_.setCollisionBehavior(
 	        {{20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0}},
 	        {{20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0}},
@@ -232,110 +233,91 @@ namespace franka_control {
 //	    robot_.setEE(mat2arr(init_ee_frame));
 	}
 
-	void Robot::setJointImpedance(const Vector7d& kq) {
-    	checkVelocityControlNotRunning_();
-		robot_.setJointImpedance(vec2arr(kq));
-	}
-
-	void Robot::setCartesianImpedance(const Vector6d& kx) {
-    	checkVelocityControlNotRunning_();
-		robot_.setCartesianImpedance(vec2arr(kx));
-	}
-
     void Robot::stop() {
-    	checkVelocityControlNotRunning_();
     	robot_.stop();
     }
 
 	bool Robot::hasErrors() {
-//    	checkVelocityControlNotRunning_();
-		auto state = vcThreadRunning_ ? robotState_ : robot_.readOnce();
+    	auto state = getRobotState();
 		return bool(state.current_errors);
 	}
 
 	bool Robot::recoverFromErrors() {
-    	checkVelocityControlNotRunning_();
 		robot_.automaticErrorRecovery();
 	    return !hasErrors();
 	}
 
 	unsigned Robot::serverVersion() {
-    	checkVelocityControlNotRunning_();
 		return robot_.serverVersion();
 	}
 
     void Robot::doMoveJointPosition_(const Vector7d& targetJointPos) {
-//		if (vcThreadRunning_) {
-//			throw std::runtime_error("Error: joint position control not possible while "
-//				"velocity control is running");
-//		}
 
+    	// Use previous desired joint angles as initial joint angles
+		initJointPos_ = getDesiredJointPosition();
 		targetJointPos_ = targetJointPos;
 
-    	// Use previous desired joints as initial joints
-    	initJointPos_ = getDesiredJointPositions();
+		// Compute Euclidean distance between initial and target joint angles
+		double jointDist = (targetJointPos_ - initJointPos_).norm();
 
-    	// Compute the distance between initial and target joint angles
-    	double jointDist = (targetJointPos_ - initJointPos_).norm();
-
+		// Compute joint angle trajectory
 		posTraj_ = LSSABTrajectory(0, jointDist,
 			maxJointVelocity_ * relVelocity_,
 			maxJointAccel_ * relAccel_,
 			maxJointJerk_ * relJerk_,
 			true);
 
-		// If no move to perform then we're done
-		if (posTraj_.duration() == 0) return;
+		// If there is any trajectory to follow ...
+		if (posTraj_.duration() > 0) {
 
-		currTime_ = 0.0;
+			trajTime_ = 0.0;
 
-		// Specify motion generator callback function
-		robot_.control([this](const franka::RobotState& robotState,
-				franka::Duration period) -> franka::JointPositions {
-			// Update current time
-			currTime_ += period.toSec();
-			robotState_ = robotState;
+			// Control robot using joint motion generator callback function
+			robot_.control([this](const franka::RobotState& robotState,
+					franka::Duration period) -> franka::JointPositions {
 
-			// Compute trajectory value for the current time
-			double trajVal = posTraj_(currTime_);
+				// Synch robot state
+				{
+					std::lock_guard<std::mutex> guard(robotStateMutex_);
+					robotState_ = franka::RobotState(robotState);
+					trajTime_ += period.toSec();
+				}
 
-			// Interpolate between initial and final joint angles
-			Vector7d currJoints = lerp(trajVal, initJointPos_, targetJointPos_);
+				// Interpolate between initial and final joint angles
+				Vector7d currJoints = lerp(posTraj_(trajTime_), initJointPos_, targetJointPos_);
 
-			if (currTime_ >= posTraj_.duration()) {
-				return franka::MotionFinished(franka::JointPositions(vec2arr(currJoints)));
-			} else {
-				return franka::JointPositions(vec2arr(currJoints));
-			}
-		}, franka::ControllerMode::kJointImpedance, true, 100.0);
+				// If we've reached the end of the trajectory, signal completion;
+				// otherwise return the joint angles
+				if (trajTime_ >= posTraj_.duration()) {
+					return franka::MotionFinished(franka::JointPositions(vec2arr(currJoints)));
+				} else {
+					return franka::JointPositions(vec2arr(currJoints));
+				}
+			});
+		}
     }
 
-    void Robot::doMoveLinearPosition_(const std::tuple<Vector3d, Vector4d>& targetPose, const Vector2d& elbow, bool elbowDefined)
-    {
-//		if (vcThreadRunning_) {
-//			throw std::runtime_error("Error: Cartesian position control not possible while "
-//				"velocity control is running");
-//		}
+    void Robot::doMoveLinearPosition_(const std::tuple<Vector3d, Vector4d>& targetPose,
+    		const Vector2d& elbow, bool elbowDefined) {
 
-    	std::tuple<Vector3d, Quaterniond> targetPoseQuat = qcoeff2quat(targetPose);
+		// Use previous desired pose as initial pose; extract translation and
+    	// rotation (quaternion) components
+		std::tuple<Vector3d, Quaterniond> initPose = qcoeff2quat(getDesiredPose());
+		initTrans_ = std::get<0>(initPose);
+		initRot_ = std::get<1>(initPose);
 
-    	// Split out translation and rotation (quaternion) components
-    	targetTrans_ = std::get<0>(targetPoseQuat);
-    	targetRot_ = std::get<1>(targetPoseQuat);
+		std::tuple<Vector3d, Quaterniond> targetPoseQuat = qcoeff2quat(targetPose);
+		targetTrans_ = std::get<0>(targetPoseQuat);
+		targetRot_ = std::get<1>(targetPoseQuat);
 
-    	// Use previous desired pose as initial pose
-    	std::tuple<Vector3d, Quaterniond> initPose = qcoeff2quat(getDesiredPose());
-
-    	initTrans_ = std::get<0>(initPose);
-    	initRot_ = std::get<1>(initPose);
-
-    	// Compute translation distance between poses
+		// Compute Euclidean distance between translation components
 		double transDist = (targetTrans_ - initTrans_).norm();
 
-		// Compute rotation distance between poses
+		// Compute angular distance between rotation components
 		double rotDist = targetRot_.angularDistance(initRot_);
 
-		// Use translation or rotation trajectory with the longest duration
+		// Compute translation and rotation trajectories; use trajectory
+		// with the longest duration
 		LSSABTrajectory transTraj = LSSABTrajectory(0, transDist,
 			maxTransVelocity_ * relVelocity_,
 			maxTransAccel_ * relAccel_,
@@ -348,130 +330,132 @@ namespace franka_control {
 			true);
 		posTraj_ = (transTraj.duration() > rotTraj.duration()) ? transTraj : rotTraj;
 
-		// If no move to perform then we're done
-		if (posTraj_.duration() == 0) return;
+		// If there is any trajectory to follow ...
+		if (posTraj_.duration() > 0) {
 
-		elbow_ = elbow;
-		elbowDefined_ = elbowDefined;
-		currTime_ = 0.0;
+			elbow_ = elbow;
+			elbowDefined_ = elbowDefined;
+			trajTime_ = 0.0;
 
-		// Specify motion generator callback function
-		robot_.control([this](const franka::RobotState& robotState,
-				franka::Duration period) -> franka::CartesianPose {
-			// Update current time
-			currTime_ += period.toSec();
-			robotState_ = robotState;
+			// Control robot using Cartesian position motion generator callback function
+			robot_.control([this](const franka::RobotState& robotState,
+					franka::Duration period) -> franka::CartesianPose {
 
-			// Interpolate between initial and final poses
-			double trajVal = posTraj_(currTime_);
-			Vector3d currPos = lerp(trajVal, initTrans_, targetTrans_);
-			Quaterniond currRot = initRot_.slerp(trajVal, targetRot_);
-
-			// Convert interpolated pose to column-major vector representation of 4x4 homogeneous matrix
-			std::array<double, 16> currPose = mat2arr(quat2mat(std::make_tuple(currPos, currRot)));
-
-			// Returned interpolated pose depends on whether elbow has been specified
-			if (currTime_ >= posTraj_.duration()) {
-				if (elbowDefined_) {
-					return franka::MotionFinished(franka::CartesianPose(currPose, vec2arr(elbow_)));
-				} else {
-					return franka::MotionFinished(franka::CartesianPose(currPose));
+				// Synch robot state
+				{
+					std::lock_guard<std::mutex> guard(robotStateMutex_);
+					robotState_ = franka::RobotState(robotState);
+					trajTime_ += period.toSec();
 				}
-			} else {
-				if (elbowDefined_) {
-					return franka::CartesianPose(currPose, vec2arr(elbow_));
+
+				// Interpolate between initial and final translation and rotation
+				double trajVal = posTraj_(trajTime_);
+				Vector3d currPos = lerp(trajVal, initTrans_, targetTrans_);
+				Quaterniond currRot = initRot_.slerp(trajVal, targetRot_);
+
+				// Convert interpolated translation and rotation to column-major
+				// vector representation of 4x4 homogeneous matrix
+				std::array<double, 16> currPose = mat2arr(quat2mat(std::make_tuple(currPos, currRot)));
+
+				// If we've reached the end of the trajectory, signal completion;
+				// otherwise return the Cartesian pose (format depends on whether
+				// elbow has been defined)
+				if (trajTime_ >= posTraj_.duration()) {
+					if (elbowDefined_) {
+						return franka::MotionFinished(franka::CartesianPose(currPose, vec2arr(elbow_)));
+					} else {
+						return franka::MotionFinished(franka::CartesianPose(currPose));
+					}
 				} else {
-					return franka::CartesianPose(currPose);
+					if (elbowDefined_) {
+						return franka::CartesianPose(currPose, vec2arr(elbow_));
+					} else {
+						return franka::CartesianPose(currPose);
+					}
 				}
-			}
-		}, franka::ControllerMode::kJointImpedance, true, 100.0);
+			});
+		}
     }
 
-	void Robot::startVelocityControlThread_(void (Robot::*vcThreadFn)()) {
-		if (vcThreadRunning_) {
-			throw std::runtime_error("Error: cannot start velocity control thread - already running");
-		}
-		vcThread_ = std::thread([this, vcThreadFn] { (this->*vcThreadFn)(); });
-		vcThreadFn_ = vcThreadFn;
-		vcThreadRunning_ = true;
-	}
+	void Robot::doMoveJointVelocity_(const Vector7d& targetJointVel) {
 
-	void Robot::stopVelocityControlThread_() {
-		if (!vcThreadRunning_) {
-			throw std::runtime_error("Error: cannot stop velocity control thread - not running");
-		}
-		vcThreadRunning_ = false;
-		vcThread_.join();
-	}
+		// Use previous target joint velocity as initial joint velocity if velocity
+		// control thread is already running; otherwise assume it is zero
+		Vector7d initJointVel = bgThreadRunning_ ? targetJointVel_ : Vector7d::Zero();
 
-	void Robot::doLinearVelocityMotion_() {
-		robot_.control([this](const franka::RobotState& robotState, franka::Duration period) -> franka::CartesianVelocities {
+		// Compute Euclidean distance between joint velocities
+		double jointDist = (targetJointVel - initJointVel).norm();
 
-			Vector6d currVel;
-			{
-				std::lock_guard<std::mutex> guard(vcMutex_);
-				currTime_ += period.toSec();
-				robotState_ = robotState;
-				currVel = lerp(velTraj_(currTime_), initLinearVel_, targetLinearVel_);
-			}
+		// Compute joint velocity trajectory
+		SSABTrajectory newTraj = SSABTrajectory(0, jointDist,
+			maxJointAccel_ * relAccel_,
+			maxJointJerk_ * relJerk_,
+			true);
 
-			if (!vcThreadRunning_) {
-				if (elbowDefined_){
-					return franka::MotionFinished(franka::CartesianVelocities(vec2arr(currVel), vec2arr(elbow_)));
-				} else {
-					return franka::MotionFinished(franka::CartesianVelocities(vec2arr(currVel)));
+		// If there is any trajectory to follow ...
+		if (newTraj.duration() > 0) {
+
+			// If background control thread is already running ...
+			if (bgThreadRunning_) {
+				// Wait until current trajectory has completed
+				while (trajTime_ < velTraj_.duration()) {
+					std::this_thread::sleep_for(std::chrono::microseconds(100));
+				}
+
+				// Update velocity control parameters
+				{
+					std::lock_guard<std::mutex> guard(robotStateMutex_);
+					initJointVel_ = targetJointVel_;
+					targetJointVel_ = targetJointVel;
+					velTraj_ = newTraj;
+					trajTime_ = 0.0;
 				}
 			}
-			if (elbowDefined_) {
-				return franka::CartesianVelocities(vec2arr(currVel), vec2arr(elbow_));
-			} else {
-				return franka::CartesianVelocities(vec2arr(currVel));
-			}
-		}, franka::ControllerMode::kJointImpedance, true, 100.0);
-	}
+			else {
+				// Initialise velocity control parameters
+				initJointVel_ = Vector7d::Zero();
+				targetJointVel_ = targetJointVel;
+				velTraj_ = newTraj;
+				trajTime_ = 0.0;
 
-	void Robot::doJointVelocityMotion_() {
-		robot_.control([this](const franka::RobotState& robotState, franka::Duration period) -> franka::JointVelocities {
-
-			Vector7d currJointVel;
-			{
-				std::lock_guard<std::mutex> guard(vcMutex_);
-				currTime_ += period.toSec();
-				robotState_ = robotState;
-				currJointVel = lerp(velTraj_(currTime_), initJointVel_, targetJointVel_);
+				// Start background velocity control thread
+				startBackgroundThread_(&Robot::doJointVelocityMotion_);
 			}
 
-			if (!vcThreadRunning_) {
-				return franka::MotionFinished(franka::JointVelocities(vec2arr(currJointVel)));
-			}
-			return franka::JointVelocities(vec2arr(currJointVel));
+			// If target joint velocity is zero
+			if (bgThreadRunning_ && targetJointVel_.isZero()) {
+				// Wait until trajectory has finished
+				while (trajTime_ < velTraj_.duration()) {
+					std::this_thread::sleep_for(std::chrono::microseconds(100));
+				}
 
-		}, franka::ControllerMode::kJointImpedance, true, 100.0);
+				// Stop background velocity control thread
+				stopBackgroundThread_();
+			}
+		}
 	}
 
 	void Robot::doMoveLinearVelocity_(const Vector6d& targetLinearVel, const Vector2d& elbow, bool elbowDefined) {
 
-		if (vcThreadRunning_ && vcThreadFn_ == &Robot::doJointVelocityMotion_) {
-			throw std::runtime_error("Error: Cartesian velocity control not possible while "
-				"joint velocity control is running");
-		}
+		// Use previous target Cartesian velocity as initial Cartesian velocity if
+		// velocity control thread is already running; otherwise assume it is zero
+		Vector6d initLinearVel = bgThreadRunning_ ? targetLinearVel_ : Vector6d::Zero();
 
-    	// Use previous desired velocity as initial velocity
-    	Vector6d initLinearVel = vcThreadRunning_ ? targetLinearVel_ : Vector6d::Zero();
+		// Extract translation and rotation velocity components
+		Vector3d initTransVel = initLinearVel.head(3);
+		Vector3d initRotVel = initLinearVel.tail(3);
 
-    	Vector3d initTransVel = initLinearVel.head(3);
-    	Vector3d initRotVel = initLinearVel.tail(3);
+		Vector3d targetTransVel = targetLinearVel.head(3);
+		Vector3d targetRotVel = targetLinearVel.tail(3);
 
-    	Vector3d targetTransVel = targetLinearVel.head(3);
-    	Vector3d targetRotVel = targetLinearVel.tail(3);
-
-    	// Compute relative distance between translation velocities
+		// Compute Euclidean distance between translation velocities
 		double transDist = (targetTransVel - initTransVel).norm();
 
-    	// Compute relative distance between rotational velocities
+		// Compute Euclidean distance between rotation velocities
 		double rotDist = (targetRotVel - initRotVel).norm();
 
-		// Use translation or rotation trajectory with the longest duration
+		// Compute translation and rotation velocity trajectories;
+		// use trajectory with the longest duration
 		SSABTrajectory transTraj = SSABTrajectory(0, transDist,
 			maxTransAccel_ * relAccel_,
 			maxTransJerk_ * relJerk_,
@@ -482,132 +466,161 @@ namespace franka_control {
 			true);
 		SSABTrajectory& newTraj = (transTraj.duration() > rotTraj.duration()) ? transTraj : rotTraj;
 
-		// If no move to perform then we're done
-		if (newTraj.duration() == 0) return;
+		// If there is any trajectory to follow ...
+		if (newTraj.duration() > 0) {
 
-		// If velocity control thread already running ...
-		if (vcThreadRunning_) {
-			// Wait until current trajectory finished
-			while (currTime_ < velTraj_.duration()) {
-				std::this_thread::sleep_for(std::chrono::microseconds(100));
+			// If background velocity control thread is already running ...
+			if (bgThreadRunning_) {
+
+				// Wait until current trajectory has completed
+				while (trajTime_ < velTraj_.duration()) {
+					std::this_thread::sleep_for(std::chrono::microseconds(100));
+				}
+
+				// Update velocity control parameters
+				{
+					std::lock_guard<std::mutex> guard(robotStateMutex_);
+					initLinearVel_ = targetLinearVel_;
+					targetLinearVel_ = targetLinearVel;
+					elbow_ = elbow;
+					elbowDefined_ = elbowDefined;
+					velTraj_ = newTraj;
+					trajTime_ = 0.0;
+				}
+			}
+			else {
+				// Initialise velocity control parameters
+				initLinearVel_ = Vector6d::Zero();
+				targetLinearVel_ = targetLinearVel;
+				elbow_ = elbow;
+				elbowDefined_ = elbowDefined;
+				velTraj_ = newTraj;
+				trajTime_ = 0.0;
+
+				// Start background velocity control thread
+				startBackgroundThread_(&Robot::doLinearVelocityMotion_);
 			}
 
-			// Update/initialise velocity control parameters
-			updateLinearVelocityParams_(targetLinearVel_, targetLinearVel, elbow, elbowDefined, newTraj, 0.0);
-		}
-		else {
-			// Update/initialise velocity control parameters
-			updateLinearVelocityParams_(Vector6d::Zero(), targetLinearVel, elbow, elbowDefined, newTraj, 0.0);
+			// If target Cartesian velocity is zero ...
+			if (bgThreadRunning_ && targetLinearVel_.isZero()) {
+				// Wait until current velocity trajectory has finished
+				while (trajTime_ < velTraj_.duration()) {
+					std::this_thread::sleep_for(std::chrono::microseconds(100));
+				}
 
-			// Start velocity control thread
-			startVelocityControlThread_(&Robot::doLinearVelocityMotion_);
-		}
-
-		// If target velocity is zero
-		if (vcThreadRunning_ && targetLinearVel_.isZero()) {
-			// Wait until current trajectory finished
-			while (currTime_ < velTraj_.duration()) {
-				std::this_thread::sleep_for(std::chrono::microseconds(100));
+				// Stop background control thread
+				stopBackgroundThread_();
 			}
-
-			// Stop velocity control thread
-			stopVelocityControlThread_();
 		}
 	}
 
-	void Robot::doMoveJointVelocity_(const Vector7d& targetJointVel) {
+	void Robot::doJointVelocityMotion_() {
 
-		if (vcThreadRunning_ && vcThreadFn_ == &Robot::doLinearVelocityMotion_) {
-			throw std::runtime_error("Error: joint velocity control not possible while "
-				"Cartesian velocity control is running");
-		}
+		robot_.control([this](const franka::RobotState& robotState, franka::Duration period) -> franka::JointVelocities {
 
-    	// Use previous desired velocity as initial velocity
-    	Vector7d initJointVel = vcThreadRunning_ ? targetJointVel_ : Vector7d::Zero();
-
-    	// Compute relative distance between joint velocities
-    	double jointDist = (targetJointVel - initJointVel).norm();
-
-		SSABTrajectory newTraj = SSABTrajectory(0, jointDist,
-			maxJointAccel_ * relAccel_,
-			maxJointJerk_ * relJerk_,
-			true);
-
-		// If no move to perform then we're done
-		if (newTraj.duration() == 0) return;
-
-		// If velocity control thread already running ...
-		if (vcThreadRunning_) {
-			// Wait until current trajectory finished
-			while (currTime_ < velTraj_.duration()) {
-				std::this_thread::sleep_for(std::chrono::microseconds(100));
+			// Synch robot state
+			Vector7d initJointVel;
+			Vector7d targetJointVel;
+			SSABTrajectory velTraj;
+			{
+				std::lock_guard<std::mutex> guard(robotStateMutex_);
+				initJointVel = initJointVel_;
+				targetJointVel = targetJointVel_;
+				velTraj = velTraj_;
+				trajTime_ += period.toSec();
+				robotState_ = franka::RobotState(robotState);
 			}
 
-			// Update/initialise velocity control parameters
-			updateJointVelocityParams_(targetJointVel_, targetJointVel, newTraj, 0.0);
-		}
-		else {
-			// Update/initialise velocity control parameters
-			updateJointVelocityParams_(Vector7d::Zero(), targetJointVel, newTraj, 0.0);
+			// Interpolate between initial and final joint velocities
+			auto currJointVel = lerp(velTraj(trajTime_), initJointVel, targetJointVel);
 
-			// Start velocity control thread
-			startVelocityControlThread_(&Robot::doJointVelocityMotion_);
-		}
+			// If thread status flag has been reset, signal completion (and terminate thread);
+			// otherwise return the joint velocities (format depends on whether
+			// elbow has been defined)
+			if (!bgThreadRunning_) {
+				return franka::MotionFinished(franka::JointVelocities(vec2arr(currJointVel)));
+			}
+			return franka::JointVelocities(vec2arr(currJointVel));
+		});
+	}
 
-		// If target velocity is zero
-		if (vcThreadRunning_ && targetJointVel_.isZero()) {
-			// Wait until trajectory finished
-			while (currTime_ < velTraj_.duration()) {
-				std::this_thread::sleep_for(std::chrono::microseconds(100));
+	void Robot::doLinearVelocityMotion_() {
+
+		robot_.control([this](const franka::RobotState& robotState, franka::Duration period) -> franka::CartesianVelocities {
+
+			// Synch robot state
+			Vector6d initLinearVel;
+			Vector6d targetLinearVel;
+			SSABTrajectory velTraj;
+			Vector2d elbow;
+			bool elbowDefined;
+			{
+				std::lock_guard<std::mutex> guard(robotStateMutex_);
+				initLinearVel = initLinearVel_;
+				targetLinearVel = targetLinearVel_;
+				velTraj = velTraj_;
+				elbow = elbow_;
+				elbowDefined = elbowDefined_;
+				trajTime_ += period.toSec();
+				robotState_ = franka::RobotState(robotState);
 			}
 
-			// Stop velocity control thread
-			stopVelocityControlThread_();
+			// Interpolate between initial and final Cartesian velocities
+			auto currVel = lerp(velTraj(trajTime_), initLinearVel, targetLinearVel);
+
+			// If thread status flag has been reset, signal completion (and terminate thread);
+			// otherwise return the Cartesian velocity (format depends on whether elbow has
+			// been defined)
+			if (!bgThreadRunning_) {
+				if (elbowDefined){
+					return franka::MotionFinished(franka::CartesianVelocities(vec2arr(currVel), vec2arr(elbow)));
+				} else {
+					return franka::MotionFinished(franka::CartesianVelocities(vec2arr(currVel)));
+				}
+			}
+			if (elbowDefined) {
+				return franka::CartesianVelocities(vec2arr(currVel), vec2arr(elbow));
+			} else {
+				return franka::CartesianVelocities(vec2arr(currVel));
+			}
+		});
+	}
+
+	franka::RobotState Robot::getRobotState() {
+		// If a motion generator control function is running, use the state that is
+		// saved by the control function (calling readOnce() in this state will throw
+		// an exception
+
+		try {
+			return robot_.readOnce();
+		} catch (franka::InvalidOperationException) {
+			std::lock_guard<std::mutex> guard(robotStateMutex_);
+			return franka::RobotState(robotState_);
 		}
 	}
 
-    void Robot::updateLinearVelocityParams_(
-    		const Vector6d& initLinearVel,
-			const Vector6d& targetLinearVel,
-			const Vector2d& elbow,
-			bool elbowDefined,
-			const SSABTrajectory& trajectory,
-			double currTime
-			)
-    {
-		std::lock_guard<std::mutex> guard(vcMutex_);
-
-		initLinearVel_ = initLinearVel;
-		targetLinearVel_ = targetLinearVel;
-		elbow_ = elbow;
-		elbowDefined_ = elbowDefined;
-		velTraj_ = trajectory;
-		currTime_ = currTime;
-    }
-
-	void Robot::updateJointVelocityParams_(
-			const Vector7d& initJointVel,
-			const Vector7d& targetJointVel,
-			const SSABTrajectory& trajectory,
-			double currTime
-			)
-	{
-		std::lock_guard<std::mutex> guard(vcMutex_);
-
-		initJointVel_ = initJointVel;
-		targetJointVel_ = targetJointVel;
-		velTraj_ = trajectory;
-		currTime_ = currTime;
-    }
-
-	void Robot::checkVelocityControlNotRunning_() {
-		if (vcThreadRunning_) {
-			throw std::runtime_error("Error: operation not possible while "
-				"velocity control is running");
+	void Robot::startBackgroundThread_(void (Robot::*bgThreadFunc)()) {
+		if (bgThreadRunning_) {
+			throw std::runtime_error("Error: background thread already running");
 		}
+		bgThreadRunning_ = true;
+		bgThread_ = std::thread([this, bgThreadFunc] { (this->*bgThreadFunc)(); });
+		bgThreadFunc_ = bgThreadFunc;
+	}
+
+	void Robot::stopBackgroundThread_() {
+		if (!bgThreadRunning_) {
+			throw std::runtime_error("Error: background thread not running");
+		}
+		// Use thread status flag to terminate thread
+		bgThreadRunning_ = false;
+		bgThread_.join();
+		bgThreadFunc_ = nullptr;
 	}
 
 }	// namespace franka_control
+
+
 
 
 

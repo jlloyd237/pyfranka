@@ -8,6 +8,7 @@
 #include <franka/exception.h>
 
 #include "robot.h"
+#include "gripper.h"
 
 namespace py = pybind11;
 using namespace pybind11::literals;
@@ -17,6 +18,7 @@ using namespace franka_control;
 PYBIND11_MODULE(_pyfranka, m) {
     m.doc() = "Python 3 control interface for Franka Panda robot";
 
+    // Python Robot class
     py::class_<Robot>(m, "Robot")
         .def(py::init<const std::string &, double, double, double, double, double, double,
         		double, double, double, double, double, double>(),
@@ -59,9 +61,12 @@ PYBIND11_MODULE(_pyfranka, m) {
 		.def_property("rel_accel", &Robot::getRelAccel, &Robot::setRelAccel)
 		.def_property("rel_jerk", &Robot::getRelJerk, &Robot::setRelJerk)
 
-		.def_property_readonly("current_joints", &Robot::getCurrentJointPositions)
-		.def_property_readonly("desired_joints", &Robot::getDesiredJointPositions)
-		.def_property_readonly("commanded_joints", &Robot::getCommandedJointPositions)
+		.def_property_readonly("server_version", &Robot::serverVersion)
+		.def_property_readonly("has_errors", &Robot::hasErrors)
+
+		.def_property_readonly("current_joints", &Robot::getCurrentJointPosition)
+		.def_property_readonly("desired_joints", &Robot::getDesiredJointPosition)
+		.def_property_readonly("commanded_joints", &Robot::getCommandedJointPosition)
 		.def_property_readonly("current_pose", &Robot::getCurrentPose)
 		.def_property_readonly("desired_pose", &Robot::getDesiredPose)
 		.def_property_readonly("commanded_pose", &Robot::getCommandedPose)
@@ -88,14 +93,6 @@ PYBIND11_MODULE(_pyfranka, m) {
 				"target_joint_vel"_a)
 		.def("move_linear_velocity", (void (Robot::*)(const Vector6d&)) &Robot::moveLinearVelocity,
 				py::call_guard<py::gil_scoped_release>(), "target_linear_vel"_a)
-
-//		.def("move_linear_velocity", [](Robot& robot, const Vector6d& targetLinearVel) {
-//    			std::cerr << "move_linear_velocity:\n" << targetLinearVel << std::endl;
-//				py::gil_scoped_release release;
-//				robot.moveLinearVelocity(targetLinearVel);
-//				py::gil_scoped_acquire acquire;
-//			})
-
 		.def("move_linear_velocity", (void (Robot::*)(const Vector6d&, const Vector2d&)) &Robot::moveLinearVelocity,
 				py::call_guard<py::gil_scoped_release>(), "target_linear_vel"_a, "elbow"_a)
 
@@ -114,8 +111,29 @@ PYBIND11_MODULE(_pyfranka, m) {
 
 		.def("stop", &Robot::stop)
         .def("recover_from_errors", &Robot::recoverFromErrors)
-        .def("has_errors", &Robot::hasErrors)
-		.def("server_version", &Robot::serverVersion)
+		;
+
+    // Python Gripper class
+    py::class_<Gripper>(m, "Gripper")
+        .def(py::init<const std::string &>(), "ip"_a)
+
+		.def_property_readonly("server_version", &Gripper::serverVersion)
+		.def_property_readonly("temperature", &Gripper::temperature)
+		.def_property_readonly("max_width", &Gripper::maxWidth)
+		.def_property_readonly("width", &Gripper::width)
+		.def_property_readonly("is_grasped", &Gripper::isGrasped)
+
+		.def("homing", &Gripper::homing, py::call_guard<py::gil_scoped_release>())
+        .def("grasp", (bool (Gripper::*)(double, double, double)) &Gripper::grasp,
+        		py::call_guard<py::gil_scoped_release>(),"width"_a, "speed"_a, "force"_a)
+		.def("grasp", (bool (Gripper::*)(double, double, double, double)) &Gripper::grasp,
+				py::call_guard<py::gil_scoped_release>(),"width"_a, "speed"_a, "force"_a,
+				"epsilon_inner"_a)
+        .def("grasp", (bool (Gripper::*)(double, double, double, double, double)) &Gripper::grasp,
+        		py::call_guard<py::gil_scoped_release>(),"width"_a, "speed"_a, "force"_a,
+				"epsilon_inner"_a, "epsilon_outer"_a)
+        .def("move", &Gripper::move, py::call_guard<py::gil_scoped_release>(), "width"_a, "speed"_a)
+		.def("stop", &Gripper::stop)
 		;
 
 	py::register_exception<franka::Exception>(m, "Exception");
@@ -128,4 +146,3 @@ PYBIND11_MODULE(_pyfranka, m) {
     py::register_exception<franka::ProtocolException>(m, "ProtocolException");
     py::register_exception<franka::RealtimeException>(m, "RealtimeException");
 }
-

@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
 		deltaJoints *= M_PI / 180;
 
     	// Use current/previous target joints as initial joints
-		Vector7d initJoints = robot.getDesiredJointPositions();
+		Vector7d initJoints = robot.getDesiredJointPosition();
 
 		// Compute target joints
 		Vector7d finalJoints = initJoints + deltaJoints;
