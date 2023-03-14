@@ -69,7 +69,7 @@ class CMakeBuild(build_ext):
 #  )
 
 setup(name='pyfranka',
-    version='0.1',
+    version='0.2',
     description='Python 3 control interface for Franka Panda robot',
     author='John Lloyd',
     author_email='jlloyd237@gmail.com',
