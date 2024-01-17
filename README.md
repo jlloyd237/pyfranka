@@ -12,7 +12,7 @@ To install the library on Linux, first build and install the [libfranka](https:/
 ```sh
 pip install -e .
 ```
-You can also install `libfranka` using `dpkg`, described as optional [here](https://frankaemika.github.io/docs/installation_linux.html#building-libfranka), and install `pybind11` using `pypi` with the global argument, as described [here](https://pybind11.readthedocs.io/en/latest/installing.html#include-with-pypi).
+You can also install libfranka using dpkg, described as optional [here](https://frankaemika.github.io/docs/installation_linux.html#building-libfranka), and install pybind11 using pypi with the global argument, as described [here](https://pybind11.readthedocs.io/en/latest/installing.html#include-with-pypi).
 
 While the library has not been tested on Windows, it may still be possible to install it, assuming that the various dependencies can be installed and the toolchain adapted for the Windows environment.
 
